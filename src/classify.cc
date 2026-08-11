@@ -874,6 +874,7 @@ taxid_t ClassifySequence(Sequence &dna, Sequence &dna2, ostringstream &koss,
           break;
         default:  // TOK_REPEAT
           taxon = last_taxon;
+          curr_taxon_counts[taxon].add_kmer(lookup_keys[tok.key_idx]);
           break;
       }
       if (taxon) {

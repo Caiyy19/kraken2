@@ -59,6 +59,7 @@ AMBIGUOUS_TAXID = 2**32 - 1
 WRAPPER_ARGS_TO_BIN_ARGS = {
     "block_size": "-B",
     "classified_out": "-C",
+    "check_pair_order": "-c",
     "confidence": "-T",
     "fast_build": "-F",
     "interleaved": "-S",
@@ -4869,6 +4870,12 @@ def make_classify_parser(subparsers):
         resolve-lca (default) - The assigned tax ID will be the result of\
         finding the Lowest Common Ancestor, LCA, of all the tax IDs\
         assigned to this read.",
+    )
+    parser.add_argument(
+        "--check-pair-order",
+        action="store_true",
+        help="When aligning paired-end reads check if the headers match.\
+        classify will terminate immediately if they are not. (default: false)"
     )
     parser.add_argument(
         "--threads",

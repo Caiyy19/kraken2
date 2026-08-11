@@ -4,6 +4,7 @@
  * This file is part of the Kraken 2 taxonomic sequence classification system.
  */
 
+#include <err.h>
 #include <sys/wait.h>
 #include <sys/types.h>
 
@@ -86,6 +87,7 @@ struct Options {
   bool match_input_order;
   std::vector<char *> filenames;
   bool daemon_mode;
+  bool check_pair_order;
 
   void reset() {
     quick_mode = false;
@@ -102,6 +104,7 @@ struct Options {
     minimum_hit_groups = 0;
     use_memory_mapping = false;
     daemon_mode = false;
+    check_pair_order = false;
 
     index_filename.clear();
     taxonomy_filename.clear();
@@ -563,6 +566,13 @@ void ProcessFiles(const char *filename1, const char *filename2,
           } else {
             seq2 = reader2.NextSequence();
             valid_fragment = seq2 != nullptr;
+          }
+          if (!seq1->compare_header(seq2->header)) {
+            errx(1, "ERROR: Unmatched pairs.\n"
+                 "Mate 1: %s\nMate 2: %s.\nPlease make sure that pairs are "
+                 "sorted before classification.",
+                 seq1->header.c_str(),
+                 seq2->header.c_str());
           }
         }
         if (! valid_fragment)
@@ -1074,7 +1084,7 @@ void MaskLowQualityBases(Sequence &dna, int minimum_quality_score) {
 void ParseCommandLine(int argc, char **argv, Options &opts) {
   int opt;
 
-  while ((opt = getopt(argc, argv, "h?H:t:o:T:p:R:C:U:O:Q:g:nmzqPSMKD")) != -1) {
+  while ((opt = getopt(argc, argv, "h?H:t:o:T:p:R:C:U:O:Q:g:nmzqPSMKDc")) != -1) {
     switch (opt) {
       case 'h' : case '?' :
         usage(0);
@@ -1145,6 +1155,9 @@ void ParseCommandLine(int argc, char **argv, Options &opts) {
       case 'D':
         opts.daemon_mode = true;
         break;
+      case 'c':
+        opts.check_pair_order = true;
+        break;
     }
   }
 
@@ -1176,6 +1189,7 @@ void usage(int exit_code) {
        << "* -t filename      Kraken 2 taxonomy filename" << endl
        << "* -o filename      Kraken 2 options filename" << endl
        << "  -q               Quick mode" << endl
+       << "  -c               Ensure pairs are ordered (stop classification otherwise)"
        << "  -M               Use memory mapping to access hash & taxonomy" << endl
        << "  -T NUM           Confidence score threshold (def. 0)" << endl
        << "  -p NUM           Number of threads (def. 1)" << endl

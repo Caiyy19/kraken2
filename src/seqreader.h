@@ -58,6 +58,26 @@ struct Sequence {
     quals = std::move(other.quals);
     return *this;
   }
+
+  bool compare_header(std::string &other_header) {
+    size_t mate1_delimiter_pos = header.find('/');
+    size_t mate2_delimiter_pos = other_header.find('/');
+
+    if (mate1_delimiter_pos == std::string::npos && mate2_delimiter_pos == std::string::npos) {
+      return header == other_header;
+    } else if (mate1_delimiter_pos != std::string::npos &&
+               mate2_delimiter_pos != std::string::npos &&
+               mate1_delimiter_pos == mate2_delimiter_pos) {
+      size_t i = 0;
+      while (i < mate1_delimiter_pos && header[i] == other_header[i]) {
+        i++;
+      }
+      return i == mate1_delimiter_pos;
+    } else {
+      return false;
+    }
+  }
+
   private:
     std::string str_representation;
 };

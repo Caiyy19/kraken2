@@ -15,6 +15,8 @@
 #include "readcounts.h"
 
 namespace kraken2 {
+void dumpTaxonCounters(const std::string &filename, taxon_counters_t &counters, const Taxonomy &tax);
+void loadTaxonCounters(const std::string &filename, taxon_counters_t &counters, const Taxonomy &tax);
 
 // Still TODO: Create an MPA-style reporter that can take a std::vector of
 //   call_counts and a std::vector of sample IDs

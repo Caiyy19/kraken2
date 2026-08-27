@@ -20,8 +20,9 @@ namespace kraken2 {
   class ReadCounts {
 
   public:
-    uint64_t readCount() const { return n_reads; }
+    int64_t readCount() const { return n_reads; }
     void incrementReadCount() { ++n_reads; }
+    void decrementReadCount(int64_t amount) { n_reads -= amount; }
     uint64_t kmerCount() const { return n_kmers; }
     uint64_t distinctKmerCount() const; // to be implemented for each CONTAINER
 
@@ -81,8 +82,30 @@ namespace kraken2 {
       return false;
     }
 
+    ReadCounts &special_merge(const ReadCounts &other) {
+      if (other.n_kmers > n_kmers) {
+        n_kmers = other.n_kmers;
+      }
+      n_reads += other.n_reads;
+      kmers += other.kmers;
+
+      return *this;
+    }
+
+    void dumpReadCounts(FILE *file) {
+      fwrite(&n_reads, sizeof(n_reads), 1, file);
+      fwrite(&n_kmers, sizeof(n_kmers), 1, file);
+      kmers.dumpHLL(file);
+    }
+
+    void loadReadCounts(FILE *file) {
+      fread(&n_reads, sizeof(n_reads), 1, file);
+      fread(&n_kmers, sizeof(n_kmers), 1, file);
+      kmers.loadHLL(file);
+    }
+
   private:
-    uint64_t n_reads;
+    int64_t n_reads;
     uint64_t n_kmers;
     CONTAINER kmers; // distinct k-mer count per taxon
   };

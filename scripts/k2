@@ -85,6 +85,7 @@ WRAPPER_ARGS_TO_BIN_ARGS = {
     "use_names": "-n",
     "use_daemon": "-D",
     "cht_cell_size": "-C",
+    "dump_taxon_counters": "-d"
 }
 
 
@@ -339,7 +340,6 @@ def make_https_connection(server):
     if "https_proxy" in os.environ:
         parts = urllib.parse.urlsplit(os.environ["https_proxy"])
         hostname, port = parts.netloc.split(":")
-        print(hostname)
         port = int(port)
         conn = http.client.HTTPSConnection(hostname, port)
         conn.set_tunnel(server)
@@ -3892,7 +3892,8 @@ def merge_classification_output(
         threads, batch_size,
         taxonomy_pathname, in_filename1,
         in_filename2, out_filename, use_names,
-        classified_headers_filename, report_filename,
+        classified_headers_filename,
+        merge_minimizer_data, report_filename,
         report_zeroes, mpa_style
 ):
     merge_binary = find_kraken2_binary("merge")
@@ -3906,6 +3907,8 @@ def merge_classification_output(
 
     if report_filename:
         argv.extend(["-r", report_filename])
+    if merge_minimizer_data:
+        argv.append("-R")
     if report_zeroes:
         argv.append("-z")
     if mpa_style:
@@ -3967,20 +3970,17 @@ def classify_multi_dbs(args, filenames=[]):
     use_names = False
     report_zeroes = False
     report_filename = None
+    report_minimizer_data = False
     classified_out_filename = None
     unclassified_out_filename = None
     mpa_style = False
 
-    if "report_minimizer_data" in args:
-        LOG.error(
-            "--report-minimizer-data not supported when using "
-            "multiple dbs\n"
-        )
-        sys.exit(1)
     if "report" in args:
         report_filename, args.report = (args.report, None)
     output = args.output if "output" in args else None
 
+    if "report_minimizer_data" in args:
+        report_minimizer_data = True
     if "report_zeroes" in args:
         report_zeroes = True
         args.report_zeroes = None
@@ -3996,6 +3996,7 @@ def classify_multi_dbs(args, filenames=[]):
     if "use_names" in args:
         use_names = True
         args.use_names = None
+
     classified_filenames = []
 
     LOG.info("Creating merged taxonomy\n")
@@ -4039,6 +4040,7 @@ def classify_multi_dbs(args, filenames=[]):
             pathname = tempfile.mktemp(prefix="k2_")
             classified_filenames.append(pathname)
             args.output = pathname
+            setattr(args, "dump_taxon_counters", pathname + ".dump")
 
             LOG.info("Running classification job for database {}\n".format(db))
             classify(args)
@@ -4071,6 +4073,7 @@ def classify_multi_dbs(args, filenames=[]):
             out_filename,
             use_names if final else None,
             classified_headers_filename if final else None,
+            report_minimizer_data,
             report_filename if final else None,
             report_zeroes if final else None,
             mpa_style if final else None
@@ -4080,6 +4083,9 @@ def classify_multi_dbs(args, filenames=[]):
         if delete_temps:
             os.remove(filename1)
             os.remove(filename2)
+            if report_minimizer_data:
+                os.remove(filename1 + ".dump")
+                os.remove(filename2 + ".dump")
         classified_filenames.append(out_filename)
     progress.progress(1, relative=True)
     LOG.debug("{}\r".format(progress.get_bar()))

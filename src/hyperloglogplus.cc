@@ -7,6 +7,7 @@
 
 #include "hyperloglogplus.h"
 
+#include <stdio.h>
 #include<cassert>
 #include<vector>
 #include<stdexcept>
@@ -467,6 +468,63 @@ HyperLogLogPlusMinus<HASH>::HyperLogLogPlusMinus(HyperLogLogPlusMinus<HASH>&& ot
       bit_mixer(other.bit_mixer) {
 }
 
+template<typename HASH>
+void HyperLogLogPlusMinus<HASH>::dumpHLL(FILE *f) {
+  // write precision
+  fwrite(&p, sizeof(p), 1, f);
+  // supposed register size
+  fwrite(&m, sizeof(m), 1, f);
+  fwrite(&n_observed, sizeof(n_observed), 1, f);
+
+  // actually register size
+  auto register_size = M.size();
+  fwrite(&register_size, sizeof(register_size), 1, f);
+
+  // register contents
+  if (M.size() > 0) {
+    fwrite(&M[0], sizeof(M[0]), M.size(), f);
+  }
+
+  // Add some way of persisting hash function
+  // Maybe enum?
+
+  // sparse list
+  int sparse_written = fwrite(&sparse, sizeof(sparse), 1, f);
+  if (sparse) {
+    auto sparseList_length = sparseList.size();
+    fwrite(&sparseList_length, sizeof(sparseList_length), 1, f);
+    for (auto item : sparseList) {
+      fwrite(&item, sizeof(item), 1, f);
+    }
+  }
+  fflush(f);
+}
+
+template <typename HASH> void HyperLogLogPlusMinus<HASH>::loadHLL(FILE *file) {
+  fread(&p, sizeof(p), 1, file);
+  fread(&m, sizeof(m), 1, file);
+  fread(&n_observed, sizeof(n_observed), 1, file);
+
+  size_t register_size = 0;
+  fread(&register_size, sizeof(register_size), 1, file);
+  M.reserve(m);
+  if (register_size > 0) {
+    M.resize(register_size);
+    fread(&M[0], sizeof(M[0]), register_size, file);
+  }
+
+  fread(&sparse, sizeof(sparse), 1, file);
+  size_t sparseList_size = 0;
+  if (sparse) {
+    fread(&sparseList_size, sizeof(sparseList_size), 1, file);
+    for (size_t i = 0; i < sparseList_size; i++) {
+      SparseListType::value_type entry;
+      fread(&entry, sizeof(entry), 1, file);
+      sparseList.insert(entry);
+    }
+  }
+}
+
 
 template<>
 void HyperLogLogPlusMinus<uint64_t>::insert(uint64_t item) {
@@ -861,6 +919,3 @@ struct NoHash {
 
 // Always compile 64-bit HLL class
 template class HyperLogLogPlusMinus<uint64_t>;
-
-
-

@@ -13,6 +13,49 @@ using std::ofstream;
 
 namespace kraken2 {
 
+  void dumpTaxonCounters(const std::string &filename, taxon_counters_t &counters, const Taxonomy &tax) {
+  FILE *f;
+
+  uint8_t header[] = {'T', 'C', 0, 0, 1};
+  uint8_t footer[] = {'T', 'C', 'E', 'N', 'D'};
+  f = fopen(filename.c_str(), "w");
+  fwrite(header, 1, sizeof(header) / sizeof(uint8_t), f);
+  size_t num_entries = counters.size();
+  fwrite(&num_entries, sizeof(num_entries), 1, f);
+  for (auto &entry : counters) {
+    taxid_t external_taxid = tax.nodes()[entry.first].external_id;
+    fwrite(&external_taxid, sizeof(external_taxid), 1, f);
+    entry.second.dumpReadCounts(f);
+  }
+  fwrite(footer, 1, sizeof(footer) / sizeof(uint8_t), f);
+  fclose(f);
+}
+
+  void loadTaxonCounters(const std::string &filename, taxon_counters_t &counters, const Taxonomy &tax) {
+  FILE *f;
+  uint8_t header[] = {'T', 'C', 0, 0, 1};
+  uint8_t footer[] = {'T', 'C', 'E', 'N', 'D'};
+
+  uint8_t signature[sizeof(header) / sizeof(uint8_t)] = {0};
+
+  f = fopen(filename.c_str(), "r");
+  fread(signature, 1, sizeof(header) / sizeof(uint8_t), f);
+  if (memcmp(signature, header, sizeof(header))) {
+    errx(1, "Taxon counter header does not match");
+  }
+  size_t num_entries = 0;
+  fread(&num_entries, sizeof(num_entries), 1, f);
+  for (size_t i = 0; i < num_entries; i++) {
+    taxid_t taxid = 0;
+    fread(&taxid, sizeof(taxid), 1, f);
+    counters[tax.GetInternalID(taxid)].loadReadCounts(f);
+  }
+  fread(signature, 1, sizeof(footer) / sizeof(uint8_t), f);
+  if (memcmp(signature, footer, sizeof(footer))) {
+    errx(1, "Taxon counter footer does not match");
+  }
+}
+
 taxon_counts_t GetCladeCounts(Taxonomy &tax, taxon_counts_t &call_counts) {
   taxon_counts_t clade_counts;
 

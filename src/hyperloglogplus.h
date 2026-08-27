@@ -74,6 +74,7 @@ public:
   HyperLogLogPlusMinus(HyperLogLogPlusMinus<HASH>&& other);
   HyperLogLogPlusMinus<HASH>& operator= (HyperLogLogPlusMinus<HASH>&& other);
   HyperLogLogPlusMinus<HASH>& operator= (const HyperLogLogPlusMinus<HASH>& other);
+  void dumpHLL(FILE *file);
   ~HyperLogLogPlusMinus() {};
   void reset(); // Note: sets sparse=true
 
@@ -99,6 +100,8 @@ public:
   uint64_t flajoletCardinality(bool use_sparse_precision = true) const;
 
   uint64_t nObserved() const;
+
+  void loadHLL(FILE *file);
 
 private:
   void switchToNormalRepresentation();

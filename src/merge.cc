@@ -366,7 +366,7 @@ void write_hit_list(vector<taxid_and_count> &hit_list, const char *border, FILE 
         fputs(int_to_string(previous_count, itoa_buffer), f);
 }
 
-int resolve_tree(kraken2::Taxonomy &taxonomy, kraken2::taxon_counts_t &hit_counts,
+int resolve_tree(const kraken2::Taxonomy &taxonomy, kraken2::taxon_counts_t &hit_counts,
                  size_t total_minimizers, float confidence_threshold)
 {
         int max_taxon = 0;
@@ -468,8 +468,9 @@ void parse_hit_list(char *string, int len,
         }
 }
 
-taxid_t get_lca(kraken2::Taxonomy &taxonomy,
+taxid_t get_lca(const kraken2::Taxonomy &taxonomy,
                 std::unordered_map<uint64_t, taxid_t> &lca_cache,
+                kraken2::taxon_counters_t &counters,
                 taxid_t taxid1, taxid_t taxid2) {
         if (taxid1 > taxid2) {
                 taxid_t temp = taxid1;
@@ -484,6 +485,14 @@ taxid_t get_lca(kraken2::Taxonomy &taxonomy,
         taxid2 = taxonomy.GetInternalID(taxid2);
 
         uint64_t lca = taxonomy.LowestCommonAncestor(taxid1, taxid2);
+        // if (!counters.empty()) {
+        //         if (counters.find(lca) ==
+        //             counters.end()) {
+        //                 counters[lca] = kraken2::READCOUNTER();
+        //         }
+        //         counters[lca] += counters[taxid1];
+        //         counters[lca] += counters[taxid2];
+        // }
 
         taxid_t value = (taxid_t)taxonomy.nodes()[lca].external_id;
         lca_cache[key] = value;
@@ -491,9 +500,10 @@ taxid_t get_lca(kraken2::Taxonomy &taxonomy,
         return value;
 }
 
-size_t merge_hit_lists(kraken2::Taxonomy &taxonomy,
+size_t merge_hit_lists(const kraken2::Taxonomy &taxonomy,
                        std::unordered_map<uint64_t, taxid_t> &lca_cache,
                        kraken2::taxon_counts_t &hit_counts,
+                       kraken2::taxon_counters_t &mm_counters,
                        std::vector<taxid_and_count> &hit_list1,
                        std::vector<taxid_and_count> &hit_list2,
                        std::vector<taxid_and_count> &merged_hit_list) {
@@ -520,7 +530,7 @@ size_t merge_hit_lists(kraken2::Taxonomy &taxonomy,
                         final_taxid = tc1.taxid;
                         add_to_hit_counts = false;
                 } else {
-                        final_taxid = get_lca(taxonomy, lca_cache, tc1.taxid, tc2.taxid);
+                        final_taxid = get_lca(taxonomy, lca_cache, mm_counters, tc1.taxid, tc2.taxid);
                         add_to_hit_counts = true;
                 }
 
@@ -563,11 +573,29 @@ void get_fields(char *line, const char *delim, char *fields[], int fields_len) {
         }
 }
 
+void merge_taxon_counters(const std::string &tc1_filename, const std::string &tc2_filename, kraken2::taxon_counters_t &counters,  const kraken2::Taxonomy &taxonomy) {
+        kraken2::taxon_counters_t tc2;
+
+        kraken2::loadTaxonCounters(tc1_filename, counters, taxonomy);
+        std::cout << "counter1 size " << counters.size() << std::endl;
+        kraken2::loadTaxonCounters(tc2_filename, tc2, taxonomy);
+        std::cout << "counter2 size " << tc2.size() << std::endl;
+
+        for (auto &entry : tc2) {
+                if (counters.find(entry.first) != counters.end()) {
+                        counters[entry.first].special_merge(entry.second);
+                        // counters[entry.first] += entry.second;
+                } else {
+                        counters[entry.first] = entry.second;
+                }
+        }
+}
+
 std::tuple<size_t, size_t> merge_classification_output_parallel(
-    const char *taxonomy_filename, const char *ifn1, const char *ifn2,
-    const char *ofn, const char *cfn, bool use_names,
-    kraken2::taxon_counters_t *counters, float confidence_threshold,
-    size_t batch_size) {
+        const kraken2::Taxonomy &taxonomy, const char *ifn1, const char *ifn2,
+        const char *ofn, const char *cfn, bool use_names,
+        kraken2::taxon_counters_t *counters, float confidence_threshold,
+        size_t batch_size) {
 
         enum {
                 status_field = 0,
@@ -590,8 +618,6 @@ std::tuple<size_t, size_t> merge_classification_output_parallel(
         {
                 size_t block = 0;
                 kraken2::taxon_counters_t local_counters;
-                kraken2::Taxonomy taxonomy(taxonomy_filename);
-                taxonomy.GenerateExternalToInternalIDMap();
                 std::string out_filename = ofn;
                 std::vector<std::string> lines1(batch_size);
                 std::vector<std::string> lines2(batch_size);
@@ -613,6 +639,12 @@ std::tuple<size_t, size_t> merge_classification_output_parallel(
                 size_t nlines2 = 0;
                 ostringstream local_merge_filename;
                 ostringstream local_classified_filename;
+                // counters will be empty if we're not processing minimizer
+                // data
+                int64_t decrement_amount = 0;
+                if (counters && counters->size() > 0) {
+                        decrement_amount = 1;
+                }
 
                 #pragma omp single nowait
                 {
@@ -720,9 +752,9 @@ std::tuple<size_t, size_t> merge_classification_output_parallel(
                                 parse_hit_list(fields2[hit_list_field], strlen(fields2[hit_list_field]), hit_list2);
 
                                 size_t total_minimizers =
-                                        merge_hit_lists(taxonomy, lca_cache, hit_counts, hit_list1, hit_list2, merged_hit_list);
-                                int res = resolve_tree(taxonomy, hit_counts, total_minimizers, confidence_threshold);
-                                taxid = int_to_string(res, itoa_buf);
+                                        merge_hit_lists(taxonomy, lca_cache, hit_counts, local_counters, hit_list1, hit_list2, merged_hit_list);
+                                int call = resolve_tree(taxonomy, hit_counts, total_minimizers, confidence_threshold);
+                                taxid = int_to_string(call, itoa_buf);
 
 
                                 if (fields1[status_field][0] == 'C' || fields2[status_field][0] == 'C') {
@@ -754,9 +786,22 @@ std::tuple<size_t, size_t> merge_classification_output_parallel(
                                 }
 
                                 if (counters && status[0] == 'C') {
-                                        taxid_t t = nixmans_atou64_shift(taxid, strlen(taxid));
-                                        taxid_t internal_taxid = taxonomy.GetInternalID(t);
-                                        local_counters[internal_taxid] += kraken2::READCOUNTER(1, 0);
+                                        // taxid_t t = nixmans_atou64_shift(taxid, strlen(taxid));
+                                        if (fields1[status_field][0] == 'C') {
+                                                char *taxid_str = fields1[taxid_field];
+                                                taxid_t taxid1 = nixmans_atou64_shift(taxid_str, strlen(taxid_str));
+                                                local_counters[taxonomy.GetInternalID(taxid1)].decrementReadCount(decrement_amount);
+                                        }
+                                        if (fields2[status_field][0] == 'C') {
+                                                char *taxid_str = fields2[taxid_field];
+                                                taxid_t taxid2 = nixmans_atou64_shift(taxid_str, strlen(taxid_str));
+                                                local_counters[taxonomy.GetInternalID(taxid2)].decrementReadCount(decrement_amount);
+                                        }
+
+                                        taxid_t internal_call =
+                                            taxonomy.GetInternalID(call);
+                                        local_counters[internal_call];
+                                        local_counters[internal_call].incrementReadCount();
                                 }
 
                                 if (lcfn && status[0] == 'C') {
@@ -793,12 +838,11 @@ std::tuple<size_t, size_t> merge_classification_output_parallel(
 }
 
 std::tuple<size_t, size_t> merge_classification_output(
-        const char *taxonomy_filename, const char *ifn1, const char *ifn2,
-        const char *ofn, float confidence_threshold,
-        kraken2::taxon_counters_t *counters,
-        const char *classified_headers_filename, bool use_names) {
+    const kraken2::Taxonomy &taxonomy, const char *ifn1, const char *ifn2,
+    const char *ofn, float confidence_threshold,
+    kraken2::taxon_counters_t *counters,
+    const char *classified_headers_filename, bool use_names) {
 
-        kraken2::Taxonomy taxonomy(taxonomy_filename);
         FILE *in1 = xfopen(ifn1, "r");
         FILE *in2 = xfopen(ifn2, "r");
         FILE *out = xfopen(ofn, "w");
@@ -825,6 +869,12 @@ std::tuple<size_t, size_t> merge_classification_output(
         const char *taxid;
 
         std::unordered_map<uint64_t, taxid_t> lca_cache;
+        // counters will be empty if we're not processing minimizer
+        // data
+        int64_t decrement_amount = 0;
+        if (counters && counters->size() > 0) {
+                decrement_amount = 1;
+        }
 
         enum {
                 status_field = 0,
@@ -847,8 +897,10 @@ std::tuple<size_t, size_t> merge_classification_output(
                 line1_len = getline(&line1, &line1_cap, in1);
                 line2_len = getline(&line2, &line2_cap, in2);
 
-                if (line1_len == -1) {
+                if (line1_len == -1 && line2_len == -1) {
                         break;
+                } else if (!(line1_len > 0) || !(line2_len > 0)) {
+                        errx(1, "Error while merging file, unequal line numbers");
                 }
 
                 get_fields(line1, "\t", fields1, 5);
@@ -858,9 +910,9 @@ std::tuple<size_t, size_t> merge_classification_output(
                 parse_hit_list(fields2[hit_list_field], strlen(fields2[hit_list_field]), hit_list2);
 
                 size_t total_minimizers =
-                        merge_hit_lists(taxonomy, lca_cache, hit_counts, hit_list1, hit_list2, merged_hit_list);
-                int res = resolve_tree(taxonomy, hit_counts, total_minimizers, confidence_threshold);
-                taxid = int_to_string(res, itoa_buf);
+                        merge_hit_lists(taxonomy, lca_cache, hit_counts, *counters, hit_list1, hit_list2, merged_hit_list);
+                int call = resolve_tree(taxonomy, hit_counts, total_minimizers, confidence_threshold);
+                taxid = int_to_string(call, itoa_buf);
 
 
                 if (fields1[status_field][0] == 'C' || fields2[status_field][0] == 'C') {
@@ -892,9 +944,21 @@ std::tuple<size_t, size_t> merge_classification_output(
                 }
 
                 if (counters && status[0] == 'C') {
-                        taxid_t t = nixmans_atou64_shift(taxid, strlen(taxid));
-                        taxid_t internal_taxid = taxonomy.GetInternalID(t);
-                        (*counters)[internal_taxid] += kraken2::READCOUNTER(1, 0);
+                        if (fields1[status_field][0] == 'C') {
+                                char *taxid_str = fields1[taxid_field];
+                                taxid_t taxid1 = nixmans_atou64_shift(taxid_str, strlen(taxid_str));
+                                (*counters)[taxonomy.GetInternalID(taxid1)].decrementReadCount(decrement_amount);
+                        }
+                        if (fields2[status_field][0] == 'C') {
+                                char *taxid_str = fields2[taxid_field];
+                                taxid_t taxid2 = nixmans_atou64_shift(taxid_str, strlen(taxid_str));
+                                (*counters)[taxonomy.GetInternalID(taxid2)].decrementReadCount(decrement_amount);
+                        }
+
+                        taxid_t internal_call =
+                                taxonomy.GetInternalID(call);
+                        (*counters)[internal_call];
+                        (*counters)[internal_call].incrementReadCount();
                 }
 
                 if (classified_headers_filename && status[0] == 'C') {
@@ -924,6 +988,7 @@ std::tuple<size_t, size_t> merge_classification_output(
         fclose(out);
 
         if (classified_headers_filename) {
+                fprintf(classified_headers, "%zu\n", total_sequences);
                 fclose(classified_headers);
         }
 
@@ -965,6 +1030,7 @@ int main(int argc, char **argv) {
         int batch_size = 100;
         bool use_names = false;
         bool report_zeros = false;
+        bool load_read_counts = false;
         bool mpa_style = false;
         float confidence_threshold = 0.0;
         char *report_filename = nullptr;
@@ -974,7 +1040,7 @@ int main(int argc, char **argv) {
         char *input1 = nullptr;
         char *input2 = nullptr;
 
-        while ((ch = getopt(argc, argv, "b:hi:r:mc:o:t:T:nz")) != -1) {
+        while ((ch = getopt(argc, argv, "b:hi:r:mc:o:t:RT:nz")) != -1) {
                 switch (ch) {
                 case 'b':
                         batch_size = strtod(optarg, (char **)nullptr);
@@ -1002,6 +1068,9 @@ int main(int argc, char **argv) {
                         break;
                 case 'T':
                         threads = strtod(optarg, (char **)nullptr);
+                        break;
+                case 'R':
+                        load_read_counts = true;
                         break;
                 case 'z':
                         report_zeros = true;
@@ -1048,37 +1117,41 @@ int main(int argc, char **argv) {
 
         size_t total_seqs = 0;
         size_t total_unclassified = 0;
+
+        kraken2::Taxonomy taxonomy(merged_taxon_filename);
+        taxonomy.GenerateExternalToInternalIDMap();
+
+        if (load_read_counts) {
+                merge_taxon_counters(std::string(input1) + ".dump",
+                                     std::string(input2) + ".dump", *counters, taxonomy);
+        }
+
         omp_set_num_threads(threads);
 
         if (threads == 1) {
                 std::tie(total_seqs, total_unclassified) =
                         merge_classification_output(
-                                merged_taxon_filename, input1, input2, merged_output_filename,
+                                taxonomy, input1, input2, merged_output_filename,
                                 confidence_threshold, counters, classified_headers_filename,
                                 use_names);
         } else {
-
                 std::tie(total_seqs, total_unclassified) =
                         merge_classification_output_parallel(
-                                merged_taxon_filename, input1, input2, merged_output_filename,
+                                taxonomy, input1, input2, merged_output_filename,
                                 classified_headers_filename, use_names, counters,
                                 confidence_threshold, batch_size);
         }
 
         if (report_filename != nullptr) {
-                kraken2::Taxonomy taxonomy(merged_taxon_filename);
-                taxonomy.GenerateExternalToInternalIDMap();
-
                 if (mpa_style) {
                         kraken2::ReportMpaStyle(report_filename, report_zeros, taxonomy, *counters);
                 } else {
-                        kraken2::ReportKrakenStyle(report_filename, report_zeros, false, taxonomy,
+                        kraken2::ReportKrakenStyle(report_filename, report_zeros, load_read_counts, taxonomy,
                                                    *counters, total_seqs, total_unclassified);
                 }
+        } else if (load_read_counts) {
+                kraken2::dumpTaxonCounters(std::string(merged_output_filename) + ".dump", *counters, taxonomy);
         }
-
-        // printf("total sequences: %lu\n", total_seqs);
-        // printf("total_unclassified: %lu\n", total_unclassified);
 
         return 0;
 }

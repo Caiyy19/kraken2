@@ -109,6 +109,7 @@ void MinimizerScanner::LoadSequence(const string &seq, size_t start, size_t fini
   loaded_ch_ = 0;
   last_minimizer_ = ~0;
   last_ambig_ = 0;
+  lmer_ = 0;
 }
 
 uint64_t *MinimizerScanner::NextMinimizer() {
@@ -179,9 +180,9 @@ uint64_t *MinimizerScanner::NextMinimizer() {
     queue_pos_++;
 
     // Return only if we've read in at least one k-mer's worth of chars
-    if (str_pos_ >= (size_t) k_) {
-      break;
-    }
+    // if (str_pos_ >= (size_t) k_) {
+    //   break;
+    // }
   }  // end while ! changed_minimizer
   assert(! queue_.empty());
   last_minimizer_ = queue_.front().candidate ^ toggle_mask_;
@@ -220,3 +221,21 @@ uint64_t MinimizerScanner::canonical_representation(uint64_t kmer, uint8_t n) {
 }
 
 } // end namespace
+
+// using namespace kraken2;
+
+// int main(void) {
+//   MinimizerScanner mm(4, 3, DEFAULT_SPACED_SEED_MASK, true, 0);
+//   // std::string sequence =
+//   // "ACCAGCAGGGCGCACGCATCGCGCTGCCCGAGCCCTCGACCCCCTTTCTCTGTGAGCAGCAGCCCGATTGGCCGTTGAAGGCACCACAACAACCCGACTGGCCGCTGCCCAGGCCGGCGGCGCCAACCCGGCCTGCGGCGCGGCCCCAGAGCCTGCCTTATTTCTCCCCCTACCGACCATCTCCGCAGCATGCCAGCCGTCCTCTCGCGATAGGGGACCGCCACAATAGCAACGCCAATCACCTTCCCACCCCAGCCACCAGCAGCAGCAGCACGCTCTCAGATGACGCCCTCTGGCAGGCCCTCGGCGGCGGGCGCCGCCCCTCGTCGTCATCGGCGGCGACGAACAACAACAGCAGCAACAACAACAGGCTCAGCTACCACCCAGCAAACGGGGAAGCTCGCCGCCTGCATCCAGCTACTGCGACGGCCACGGCGAAGGCGAAGGCGACGGCAGAACACCAGGCCCATCCCGACTACCCGCATATGAGCCCCTATGACGACGACAACGCCGACGCCGACGCCGACGCCGATAACAACGGCGATGTGGGTGGCGGGACTGGTGTGGTGGGCCTGGGCGTCGTGATGGCGCCGCGCCCGGCGAGCATGTTGCCGGCGCGGTTGCGGACGCGTGATCGGGCTCCGCCGGCGCTGCCGCTGCTGCCTGCGACGACGCTGGCGTCGGTGTCGTTGGGGCCGACGTTGAGTGGCCCGTTTGTTGCGCAGTTTGAGTGAGCGGTGGTTTGTCTTGNNNNNNNNNNNNNNNNCTTGCTTGTCTAGAGGGGGTGTGGATTGGGAAGTGGTGGCGGGGAAGAAGGGCGGGCGTTGGTTGATGGGACAGGACGAAGGGCTGGGTTTCATTATGAACCAATTGTCCACGGTTGGGTAAGATATAGAGGAGCAAAGCGCATTGCATATGATACCCCTGGATAAATGAGAGCAGCAATGATCGACTGAATCCTTCTGATGTCGGTGTCCGGAGAAAGGGATCGGTTCTGAAC";
+//   std::string sequence = "GTCATGCACGTTCAC";
+//   mm.LoadSequence(sequence);
+//   size_t mm_count = 0;
+//   while (mm.NextMinimizer()) {
+//     mm_count += 1;
+//   }
+
+//   std::cout << "minimizers found = " << mm_count << std::endl;
+
+//   return 0;
+// }

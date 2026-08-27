@@ -5,6 +5,7 @@
  */
 
 #include "utilities.h"
+#include "kraken2_data.h"
 
 using std::vector;
 using std::string;

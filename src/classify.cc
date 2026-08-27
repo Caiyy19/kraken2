@@ -71,6 +71,7 @@ struct Options {
   string classified_output_filename;
   string unclassified_output_filename;
   string kraken_output_filename;
+  string taxon_counters_dump_filename;
   bool mpa_style_report;
   bool report_kmer_data;
   bool quick_mode;
@@ -114,6 +115,7 @@ struct Options {
     unclassified_output_filename.clear();
     kraken_output_filename.clear();
     filenames.clear();
+    taxon_counters_dump_filename.clear();
   }
 };
 
@@ -341,6 +343,9 @@ void classify(Options &opts, IndexData *index_data) {
   // delete hash_ptr;
 
   ReportStats(tv1, tv2, stats);
+  if (!opts.taxon_counters_dump_filename.empty()) {
+    dumpTaxonCounters(opts.taxon_counters_dump_filename, taxon_counters, taxonomy);
+  }
   if (! opts.report_filename.empty()) {
     if (opts.mpa_style_report)
       ReportMpaStyle(opts.report_filename, opts.report_zero_counts, taxonomy,
@@ -647,7 +652,7 @@ void ProcessFiles(const char *filename1, const char *filename2,
         output_queue.push(std::move(out_data));
       }
 
-      if (!opts.report_filename.empty()) {
+      if (!opts.report_filename.empty() || !opts.taxon_counters_dump_filename.empty()) {
 #pragma omp critical(update_taxon_counters)
         for (auto &kv_pair : thread_taxon_counters) {
           total_taxon_counters[kv_pair.first] += std::move(kv_pair.second);
@@ -878,7 +883,7 @@ taxid_t ClassifySequence(Sequence &dna, Sequence &dna2, ostringstream &koss,
           last_taxon = taxon;
           if (taxon) {
             minimizer_hit_groups++;
-            if (!opts.report_filename.empty())
+            if (!opts.report_filename.empty() || !opts.taxon_counters_dump_filename.empty())
               curr_taxon_counts[taxon].add_kmer(lookup_keys[tok.key_idx]);
           }
           break;
@@ -912,7 +917,7 @@ taxid_t ClassifySequence(Sequence &dna, Sequence &dna2, ostringstream &koss,
 
   if (call) {
     stats.total_classified++;
-    if (!opts.report_filename.empty())
+    if (!opts.report_filename.empty() || !opts.taxon_counters_dump_filename.empty())
       curr_taxon_counts[call].incrementReadCount();
   }
 
@@ -1084,7 +1089,7 @@ void MaskLowQualityBases(Sequence &dna, int minimum_quality_score) {
 void ParseCommandLine(int argc, char **argv, Options &opts) {
   int opt;
 
-  while ((opt = getopt(argc, argv, "h?H:t:o:T:p:R:C:U:O:Q:g:nmzqPSMKDc")) != -1) {
+  while ((opt = getopt(argc, argv, "h?H:t:o:T:p:R:C:U:O:Q:g:d:nmzqPSMKDc")) != -1) {
     switch (opt) {
       case 'h' : case '?' :
         usage(0);
@@ -1158,6 +1163,9 @@ void ParseCommandLine(int argc, char **argv, Options &opts) {
       case 'c':
         opts.check_pair_order = true;
         break;
+      case 'd':
+        opts.taxon_counters_dump_filename = optarg;
+        break;
     }
   }
 
@@ -1205,6 +1213,7 @@ void usage(int exit_code) {
        << "  -U filename      Filename/format to have unclassified sequences" << endl
        << "  -O filename      Output file for normal Kraken output" << endl
        << "  -K               In comb. w/ -R, provide minimizer information in report" << endl
-       << "  -D               Start a daemon, this options is intended to be used with wrappers" << std::endl;
-  exit(exit_code);
+       << "  -D               Start a daemon, this options is intended to be used with wrappers" << std::endl
+       << "  -d filename      Dump taxon counters to filename." << endl;
+    exit(exit_code);
 }

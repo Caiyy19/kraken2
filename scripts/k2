@@ -4873,6 +4873,19 @@ def make_download_library_parser(subparsers):
         help="Specify a log filename (default: stderr)",
     )
     parser.add_argument(
+        "--refseq-category",
+        type=str,
+        choices=["all", "reference", "representative", "both"],
+        default="all",
+        help=(
+            "Filter assemblies by refseq_category from assembly_summary.txt. "
+            "'reference' -> only 'reference genome', "
+            "'representative' -> only 'representative genome', "
+            "'both' -> reference or representative genome, "
+            "'all' -> no refseq_category filtering (default: all)"
+        ),
+    )
+    parser.add_argument(
         "--threads",
         type=int,
         metavar="THREADS",
@@ -5323,14 +5336,6 @@ def make_merge_parser(subparsers):
         nargs="*",
         type=str,
         help="Filenames to be merged, supports bz2, gzip, and xz",
-    )
-    parser.add_argument(
-        "--reference-only",
-        action="store_true",
-        default=False,
-        help="Download only reference and representative genomes\
-              (filters by refseq_category in assembly_summary.txt).\
-              Reduces database size by 50-80%% while retaining critical sequences.",
     )
 
 class HelpAction(argparse._HelpAction):

@@ -975,7 +975,7 @@ def make_manifest_from_assembly_summary(args, assembly_summary_file):
     asm_level_regex = "|".join(args.assembly_levels).replace("_", " ")
     suffix = "_protein.faa.gz" if args.protein else "_genomic.fna.gz"
     manifest_to_taxid = {}
-    
+
     # Statistics for refseq_category filtering
     included = 0
     skipped = 0
@@ -987,12 +987,15 @@ def make_manifest_from_assembly_summary(args, assembly_summary_file):
     with open(before_filter_filename, "w") as before_out, \
          open(after_filter_filename, "w") as after_out:
 
-    for line in assembly_summary_file:
-        if line.startswith("#"):
-            before_out.write(line)
-            after_out.write(line)
-            continue
-        fields = line.strip().split("\t")
+        for line in assembly_summary_file:
+
+            # Keep NCBI header/comment lines in both output files
+            if line.startswith("#"):
+                before_out.write(line)
+                after_out.write(line)
+                continue
+
+            fields = line.rstrip("\n").split("\t")
 
             # assembly_summary.txt:
             # column 5  (index 4):  refseq_category
@@ -1013,84 +1016,101 @@ def make_manifest_from_assembly_summary(args, assembly_summary_file):
             asm_level = fields[11]
             ftp_path = fields[19]
 
-        if not re.match(asm_level_regex, asm_level, re.IGNORECASE):
-            continue
-        if ftp_path == "na":
-            continue
+            # Kraken2 original assembly_level filtering
+            if not re.match(
+                asm_level_regex,
+                asm_level,
+                re.IGNORECASE
+            ):
+                continue
 
-        # -------------------------------------------------
-        # Before refseq_category filtering
-        # -------------------------------------------------
-        before_out.write(line)
+            # Kraken2 original ftp_path filtering
+            if ftp_path == "na":
+                continue
 
-        # -------------------------------------------------
-        # New refseq_category filtering
-        # -------------------------------------------------
-        cat_l = refseq_cat.strip().lower()
+            # -------------------------------------------------
+            # Before refseq_category filtering
+            # -------------------------------------------------
+            before_out.write(line)
 
-        keep = True
+            # -------------------------------------------------
+            # New refseq_category filtering
+            # -------------------------------------------------
+            cat_l = refseq_cat.strip().lower()
 
-        if args.refseq_category == "reference":
-            keep = (cat_l == "reference genome")
+            keep = True
 
-        elif args.refseq_category == "representative":
-            keep = (cat_l == "representative genome")
+            if args.refseq_category == "reference":
+                keep = (cat_l == "reference genome")
 
-        elif args.refseq_category == "both":
-            keep = cat_l in (
-                "reference genome",
-                "representative genome",
+            elif args.refseq_category == "representative":
+                keep = (cat_l == "representative genome")
+
+            elif args.refseq_category == "both":
+                keep = cat_l in (
+                    "reference genome",
+                    "representative genome",
+                )
+
+            # args.refseq_category == "all"
+            # -> keep everything
+
+            if not keep:
+                skipped += 1
+                continue
+
+            included += 1
+
+            # -------------------------------------------------
+            # After refseq_category filtering
+            # -------------------------------------------------
+            after_out.write(line)
+
+            # -------------------------------------------------
+            # Kraken2 original manifest generation
+            # -------------------------------------------------
+            if ftp_path.endswith("/"):
+                ftp_path = ftp_path[:-1]
+
+            remote_path = (
+                ftp_path
+                + "/"
+                + os.path.basename(ftp_path)
+                + suffix
             )
 
-        # args.refseq_category == "all"
-        # -> keep everything
+            url_components = urllib.parse.urlsplit(remote_path)
+            local_path = url_components.path.replace("/", "", 1)
 
-        if not keep:
-            skipped += 1
-            continue
+            manifest_to_taxid[local_path] = taxid
 
-        included += 1
-
-        # -------------------------------------------------
-        # After refseq_category filtering
-        # -------------------------------------------------
-        after_out.write(line)
-
-        # -------------------------------------------------
-        # Kraken2 original manifest generation
-        # -------------------------------------------------
-        if ftp_path.endswith("/"):
-            ftp_path = ftp_path[:-1]
-        remote_path = ftp_path + "/" + os.path.basename(ftp_path) + suffix
-        url_components = urllib.parse.urlsplit(remote_path)
-        local_path = url_components.path.replace("/", "", 1)
-        manifest_to_taxid[local_path] = taxid
-        # ---------------------------------------------------------
-        # Report filtering statistics
-        # ---------------------------------------------------------
-        LOG.info(
-            "Reference genome filtering: included {}, skipped {}\n".format(
-                included,
-                skipped,
-            )
+    # ---------------------------------------------------------
+    # Report filtering statistics
+    # ---------------------------------------------------------
+    LOG.info(
+        "Reference genome filtering: included {}, skipped {}\n".format(
+            included,
+            skipped,
         )
-    
-        LOG.info(
-            "Assembly summary before refseq filtering: {}\n".format(
-                before_filter_filename
-            )
+    )
+
+    LOG.info(
+        "Assembly summary before refseq filtering: {}\n".format(
+            before_filter_filename
         )
-    
-        LOG.info(
-            "Assembly summary after refseq filtering: {}\n".format(
-                after_filter_filename
-            )
+    )
+
+    LOG.info(
+        "Assembly summary after refseq filtering: {}\n".format(
+            after_filter_filename
         )
+    )
 
     # Write manifest
     with open("manifest.txt", "w") as f:
         for k in manifest_to_taxid:
             f.write(k + "\n")
+
     return manifest_to_taxid
 
 

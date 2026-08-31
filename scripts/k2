@@ -1759,9 +1759,29 @@ def http_download_file2(server, urls, save_to=None, md5sums=None):
                         response.close()
                 if len(checksums) > 0:
                     for checksum in checksums:
-                        (md5sum, remote_filename) = checksum.split()
-                        remote_filename = os.path.basename(remote_filename.decode())
-                        md5[remote_filename] = md5sum.decode()
+                        parts = checksum.split()
+                        if len(parts) < 2:
+                            continue
+                        
+                        md5sum = parts[0]
+                        remote_filename = parts[-1]
+                        if len(checksums) > 0:
+                            for checksum in checksums:
+                                parts = checksum.split()
+                        
+                                if len(parts) < 2:
+                                    LOG.warning(
+                                        "Skipping malformed checksum line: {}\n".format(
+                                            checksum.decode(errors="replace").strip()
+                                        )
+                                    )
+                                    continue
+                        
+                                md5sum = parts[0]
+                                remote_filename = parts[-1]
+                        
+                                remote_filename = os.path.basename(remote_filename.decode())
+                                md5[remote_filename] = md5sum.decode()
             if (
                 not skip_md5_check
                 and os.path.exists(local_name)
